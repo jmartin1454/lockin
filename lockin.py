@@ -9,7 +9,7 @@ from optparse import OptionParser
 parser = OptionParser()
 
 parser.add_option("-f", "--file", dest="infile",
-                  default="sample.txt", help="read data from file",
+                  default="sample_short.txt", help="read data from file",
                   metavar="FILE")
 
 (options, args) = parser.parse_args()
