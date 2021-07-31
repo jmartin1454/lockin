@@ -9,7 +9,7 @@ from optparse import OptionParser
 parser = OptionParser()
 
 parser.add_option("-f", "--file", dest="infile",
-                  default="sample_short.txt", help="read data from file",
+                  default="sample_short.txt.gz", help="read data from file",
                   metavar="FILE")
 
 (options, args) = parser.parse_args()
@@ -92,11 +92,36 @@ plt.ylabel('V (V)')
 plt.legend()
 plt.show()
 
+rnorm=r/np.amax(r)
 plt.plot(t,theta/2/pi,label=r'$\theta/2\pi$')
-plt.plot(t,r/np.amax(r),label='R/max(R)')
+plt.plot(t,rnorm,label='R/max(R)')
 #freq=np.diff(theta)/2/pi/dt # seems to add noise
 #freq=np.append(freq,freq[-1]) # differentiation removes one entry
 #plt.plot(t,freq,label='f-%f (Hz)'%lockin.f_ref)
+
+
+
+class schmitt_trigger:
+    def __init__(self,hi,lo):
+        self.hi=hi
+        self.lo=lo
+    def return_trigger(self,data):
+        trigger=np.empty_like(data)
+        nowlevel=self.lo
+        for i in range(len(data)):
+            if(nowlevel==self.lo and data[i]>self.hi):
+                nowlevel=self.hi
+            if(nowlevel==self.hi and data[i]<self.lo):
+                nowlevel=self.lo
+            trigger[i]=nowlevel
+        return trigger
+
+schmitt=schmitt_trigger(.7,.3)
+trigger=schmitt.return_trigger(rnorm)>.5
+plt.plot(t,trigger,label='trigger')
+
+
 plt.xlabel('t (s)')
 plt.legend()
 plt.show()
+
