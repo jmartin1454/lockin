@@ -4,7 +4,9 @@ from math import *
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import signal
+from scipy import stats
 from optparse import OptionParser
+
 
 parser = OptionParser()
 
@@ -92,6 +94,33 @@ plt.ylabel('V (V)')
 plt.legend()
 plt.show()
 
+# http://www.ap.smu.ca/~agolob/phys2300/blog/climate-change/
+# (Hope it's right... you can get it from Taylor or Bevington, too.)
+def OLSfit(x, y, dy=None):
+    """Find the best fitting parameters of a linear fit to the data through the
+    method of ordinary least squares estimation. (i.e. find m and b for
+    y = m*x + b)
+
+    Args:
+        x: Numpy array of independent variable data
+        y: Numpy array of dependent variable data. Must have same size as x.
+        dy: Numpy array of dependent variable standard deviations. Must be same
+            size as y.
+
+    Returns: A list with four floating point values. [m, dm, b, db]
+    """
+    if dy is None:
+        #if no error bars, weight every point the same
+        dy = np.ones(x.size)
+    denom = np.sum(1 / dy**2) * np.sum((x / dy)**2) - (np.sum(x / dy**2))**2
+    m = (np.sum(1 / dy**2) * np.sum(x * y / dy**2) -
+         np.sum(x / dy**2) * np.sum(y / dy**2)) / denom
+    b = (np.sum(x**2 / dy**2) * np.sum(y / dy**2) -
+         np.sum(x / dy**2) * np.sum(x * y / dy**2)) / denom
+    dm = np.sqrt(np.sum(1 / dy**2) / denom)
+    db = np.sqrt(np.sum(x / dy**2) / denom)
+    return([m, dm, b, db])
+
 rnorm=r/np.amax(r)
 plt.plot(t,theta/2/pi,label=r'$\theta/2\pi$')
 plt.plot(t,rnorm,label='R/max(R)')
@@ -99,7 +128,8 @@ plt.plot(t,rnorm,label='R/max(R)')
 #freq=np.append(freq,freq[-1]) # differentiation removes one entry
 #plt.plot(t,freq,label='f-%f (Hz)'%lockin.f_ref)
 
-
+# The rest of this is just trying to define the ranges of data to fit,
+# based on looking at rnorm and trying to figure it out.
 
 class schmitt_trigger:
     def __init__(self,hi,lo):
@@ -117,11 +147,52 @@ class schmitt_trigger:
         return trigger
 
 schmitt=schmitt_trigger(.7,.3)
-trigger=schmitt.return_trigger(rnorm)>.5
+trigger=schmitt.return_trigger(rnorm)
 plt.plot(t,trigger,label='trigger')
+
+hilo=np.diff(trigger)
+hilo=np.append(hilo,hilo[-1])
+plt.plot(t,hilo,label='trigger transitions')
+rising_edges=t[hilo>.3]
+falling_edges=t[hilo<-.3]
+
+
+maxtimes=np.empty_like(rising_edges)
+mintimes=np.empty_like(maxtimes)
+freq=np.empty_like(maxtimes)
+for i in range(len(rising_edges)):
+    maxtimes[i]=t[np.argmax(np.ma.masked_where((t<rising_edges[i])|(t>falling_edges[i]),rnorm))]
+    if(i<len(rising_edges)-1):
+        mintimes[i]=t[np.argmax(np.ma.masked_where((t<falling_edges[i])|(t>rising_edges[i+1]),-rnorm))]
+    else:
+        mintimes[i]=t[np.argmax(np.ma.masked_where((t<falling_edges[i]),-rnorm))]
+    maxtimes[i]=maxtimes[i]+3*lockin.tau_lockin
+    mintimes[i]=maxtimes[i]+.05
+    mask=(t>maxtimes[i])&(t<mintimes[i])
+    #res=stats.linregress(t[mask],theta[mask]/2/pi)
+    #plt.plot(t[mask],res.intercept+res.slope*t[mask],'r')    
+    #freq[i]=res.slope
+    res=OLSfit(t[mask],theta[mask]/2/pi,1/rnorm[mask])
+    plt.plot(t[mask],res[2]+res[0]*t[mask],'r')    
+    freq[i]=res[0]
+    
+#print(maxtimes)
+#print(mintimes)
+print(freq)
 
 
 plt.xlabel('t (s)')
 plt.legend()
 plt.show()
 
+gamma=7000 # Hz/uT
+true_freq=lockin.f_ref-freq
+print(true_freq)
+field=true_freq/gamma # uT
+field=field*1e6 # pT
+plt.plot(maxtimes,field,label='trigger')
+plt.show()
+
+plt.hist(field)
+print(np.mean(field),np.std(field))
+plt.show()
